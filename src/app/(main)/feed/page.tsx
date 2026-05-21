@@ -13,6 +13,8 @@ export default function FeedPage() {
     const res = await fetch('/api/feed')
     const data = await res.json()
     if (data.posts) setPosts(data.posts)
+        console.log(posts)
+
   }
 
   useEffect(() => {
