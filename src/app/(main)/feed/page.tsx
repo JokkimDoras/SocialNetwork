@@ -3,23 +3,94 @@
 import { useState, useEffect } from 'react'
 import { Post } from '@/types'
 import { formatDistanceToNow } from 'date-fns'
+import toast from 'react-hot-toast'
+import { GrLike } from "react-icons/gr";
+import { MdDeleteOutline } from "react-icons/md";
+import { BiCommentDetail } from "react-icons/bi";
+
+
+
 
 export default function FeedPage() {
   const [posts, setPosts] = useState<Post[]>([])
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(false)
+  const [likeLoading, setLikeLoading] = useState<string | null>(null)
+  const [openComments, setOpenComments] = useState<string | null>(null)
+  const [commentText, setCommentText] = useState('')
+  const [comments, setComments] = useState<Record<string, any[]>>({})
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
+useEffect(() => {
+  const getUser = async () => {
+    const res = await fetch('/api/users/me')
+    const data = await res.json()
+    if (data.user) setCurrentUserId(data.user.id)
+  }
+  getUser()
+  fetchPosts()
+}, [])
+
+
+const fetchComments = async (postId: string) => {
+  const res = await fetch(`/api/posts/${postId}/comments`)
+  const data = await res.json()
+  if (data.comments) {
+    setComments((prev) => ({ ...prev, [postId]: data.comments }))
+  }
+}
+
+const handleComment = async (postId: string) => {
+  if (!commentText.trim()) return
+  const res = await fetch(`/api/posts/${postId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: commentText }),
+  })
+  if (res.ok) {
+    setCommentText('')
+    fetchComments(postId)
+    fetchPosts()
+  }
+}
   const fetchPosts = async () => {
     const res = await fetch('/api/feed')
     const data = await res.json()
     if (data.posts) setPosts(data.posts)
-        console.log(posts)
-
   }
 
   useEffect(() => {
     fetchPosts()
+
   }, [])
+
+  const handleLike = async (post) => {
+    if (likeLoading === post.id) return
+    setLikeLoading(post.id)
+  
+    setPosts((prevPosts) =>
+      prevPosts.map((p) => {
+        if (p.id !== post.id) return p
+        return {
+          ...p,
+          isLiked: !p.isLiked,
+          like_count: p.isLiked ? p.like_count - 1 : p.like_count + 1,
+        }
+      })
+    )
+  
+    try {
+      await fetch('/api/like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: post.id }),
+      })
+    } catch {
+      toast.error('Failed to update like')
+    } finally {
+      setLikeLoading(null)
+    }
+  }
 
   const handlePost = async () => {
     if (!content.trim()) return
@@ -29,6 +100,11 @@ export default function FeedPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
     })
+    if(!res.ok) {
+      toast.error('Session expired. Please log in again')
+      setLoading(false)
+      return
+    }
     if (res.ok) {
       setContent('')
       fetchPosts()
@@ -36,8 +112,21 @@ export default function FeedPage() {
     setLoading(false)
   }
 
+  const handleDelete = async (postId: string) => {
+    const res = await fetch(`/api/posts/${postId}`, {
+      method: 'DELETE',
+    })
+    if (res.ok) {
+      toast.success('Post deleted!')
+      setPosts((prev) => prev.filter((p) => p.id !== postId))
+    } else {
+      toast.error('Failed to delete post')
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    
 
       {/* Feed */}
       <div className="md:col-span-2 flex flex-col gap-4">
@@ -84,6 +173,15 @@ export default function FeedPage() {
                     @{post.author?.username} · {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
                   </p>
                 </div>
+                {post.author_id === currentUserId && (
+    <button
+      onClick={() => handleDelete(post.id)}
+      className="ml-auto text-neutral-400 hover:text-red-500 transition-colors"
+      >
+      <MdDeleteOutline size={20}  />
+    </button>
+  )}
+
               </div>
 
               <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed mb-3">
@@ -99,12 +197,61 @@ export default function FeedPage() {
               )}
 
               <div className="flex items-center gap-4 pt-2 border-t border-neutral-100 dark:border-neutral-800">
-                <button className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-red-500 transition-colors">
-                  ❤️ {post.like_count}
+                <button disabled={likeLoading=== post.id} onClick={() => handleLike(post)} className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-blue-500 transition-colors">
+                  <GrLike className={`transition-colors duration-200 ${post.isLiked? 'text-blue-500 fill-blue-500':''}`}/> {post.like_count}
                 </button>
-                <button className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-teal-500 transition-colors">
-                  💬 {post.comment_count}
-                </button>
+                <button
+  onClick={() => {
+    if (openComments === post.id) {
+      setOpenComments(null)
+    } else {
+      setOpenComments(post.id)
+      fetchComments(post.id)
+    }
+  }}
+  className="flex  items-center gap-1.5 text-xs text-neutral-400 hover:text-teal-500 transition-colors"
+>
+  <BiCommentDetail size={15} /> {post.comment_count}
+</button>
+
+{/* Comments Section */}
+{openComments === post.id && (
+  <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-col gap-3">
+    {/* Comment Input */}
+    <div className="flex gap-2">
+      <input
+        type="text"
+        value={commentText}
+        onChange={(e) => setCommentText(e.target.value)}
+        placeholder="Write a comment..."
+        className="flex-1 text-xs px-3 py-2 rounded-full border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white outline-none"
+      />
+      <button
+        onClick={() => handleComment(post.id)}
+        className="px-3 py-1.5 bg-neutral-950 text-white text-xs rounded-full hover:bg-neutral-800 transition-colors"
+      >
+        Send
+      </button>
+    </div>
+
+    {/* Comments List */}
+    {(comments[post.id] || []).map((comment) => (
+      <div key={comment.id} className="flex gap-2">
+        <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-900 flex items-center justify-center text-xs font-medium text-teal-700 dark:text-teal-300 flex-shrink-0">
+          {comment.user?.first_name?.[0]}{comment.user?.last_name?.[0]}
+        </div>
+        <div className="flex-1 bg-neutral-50 dark:bg-neutral-800 rounded-xl px-3 py-2">
+          <p className="text-xs font-medium text-neutral-900 dark:text-white">
+            {comment.user?.first_name} {comment.user?.last_name}
+          </p>
+          <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
+            {comment.content}
+          </p>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
               </div>
             </div>
           ))

@@ -4,6 +4,17 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
   try {
+    const token = req.cookies.get('token')?.value
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const payload = await verifyToken(token)
+    if (!payload) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Fetch posts
     const { data: posts, error } = await supabaseAdmin
       .from('posts')
       .select(`
@@ -16,7 +27,21 @@ export async function GET(req: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json({ posts })
+    // Fetch which posts this user has liked
+    const { data: likes } = await supabaseAdmin
+      .from('likes')
+      .select('post_id')
+      .eq('user_id', payload.userId)
+
+    const likedPostIds = new Set(likes?.map((l) => l.post_id) || [])
+
+    // Add isLiked to each post
+    const postsWithLikes = posts.map((post) => ({
+      ...post,
+      isLiked: likedPostIds.has(post.id),
+    }))
+
+    return NextResponse.json({ posts: postsWithLikes })
 
   } catch (err) {
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })

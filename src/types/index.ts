@@ -24,6 +24,7 @@ export interface User {
     is_active: boolean
     like_count: number
     comment_count: number
+    isLiked?:boolean
     created_at: string
     updated_at: string
     author?: User
