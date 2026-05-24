@@ -21,15 +21,33 @@ export default function FeedPage() {
   const [comments, setComments] = useState<Record<string, any[]>>({})
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
-useEffect(() => {
-  const getUser = async () => {
-    const res = await fetch('/api/users/me')
-    const data = await res.json()
-    if (data.user) setCurrentUserId(data.user.id)
-  }
-  getUser()
-  fetchPosts()
-}, [])
+  useEffect(() => {
+    const getUser = async () => {
+      
+      try {
+        // 1. Try to get the user data
+        const res = await fetch('/api/users/me')
+        const data = await res.json()
+        if(data.error) toast.error('Unauthorized Entry')
+  
+        // 2. Use the "?" to safely check if data.user exists
+        if (data?.user?.id) {
+          setCurrentUserId(data.user.id)
+        } else {
+          throw new Error('Session Expired! Try Login Again')
+        }
+  
+      } catch (error) {
+        console.log("We caught the error! The message was:", error.message)
+      }
+  
+    }
+  
+    getUser()
+    fetchPosts()
+  }, [])
+
+
 
 
 const fetchComments = async (postId: string) => {
@@ -64,7 +82,7 @@ const handleComment = async (postId: string) => {
 
   }, [])
 
-  const handleLike = async (post) => {
+  const handleLike = async (post:string | any) => {
     if (likeLoading === post.id) return
     setLikeLoading(post.id)
   
@@ -160,100 +178,108 @@ const handleComment = async (postId: string) => {
           </div>
         ) : (
           posts.map((post) => (
-            <div key={post.id} className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-full bg-teal-100 dark:bg-teal-900 flex items-center justify-center text-xs font-medium text-teal-700 dark:text-teal-300">
-                  {post.author?.first_name?.[0]}{post.author?.last_name?.[0]}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-neutral-900 dark:text-white">
-                    {post.author?.first_name} {post.author?.last_name}
-                  </p>
-                  <p className="text-xs text-neutral-400">
-                    @{post.author?.username} · {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
-                  </p>
-                </div>
-                {post.author_id === currentUserId && (
-    <button
-      onClick={() => handleDelete(post.id)}
-      className="ml-auto text-neutral-400 hover:text-red-500 transition-colors"
+<div key={post.id} className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4">
+  
+  {/* Post Header */}
+  <div className="flex items-center gap-3 mb-3">
+    <div className="w-9 h-9 rounded-full bg-teal-100 dark:bg-teal-900 flex items-center justify-center text-xs font-medium text-teal-700 dark:text-teal-300 flex-shrink-0">
+      {post.author?.first_name?.[0]}{post.author?.last_name?.[0]}
+    </div>
+    <div className="flex-1">
+      <p className="text-sm font-medium text-neutral-900 dark:text-white">
+        {post.author?.first_name} {post.author?.last_name}
+      </p>
+      <p className="text-xs text-neutral-400">
+        @{post.author?.username} · {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+      </p>
+    </div>
+    {post.author_id === currentUserId && (
+      <button
+        onClick={() => handleDelete(post.id)}
+        className="text-neutral-300 hover:text-red-500 transition-colors"
       >
-      <MdDeleteOutline size={20}  />
-    </button>
+        <MdDeleteOutline size={18} />
+      </button>
+    )}
+  </div>
+
+  {/* Post Content */}
+  <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed mb-3">
+    {post.content}
+  </p>
+
+  {post.image_url && (
+    <img
+      src={post.image_url}
+      alt="post"
+      className="w-full rounded-xl mb-3 object-cover max-h-80"
+    />
   )}
 
-              </div>
-
-              <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed mb-3">
-                {post.content}
-              </p>
-
-              {post.image_url && (
-                <img
-                  src={post.image_url}
-                  alt="post"
-                  className="w-full rounded-xl mb-3 object-cover max-h-80"
-                />
-              )}
-
-              <div className="flex items-center gap-4 pt-2 border-t border-neutral-100 dark:border-neutral-800">
-                <button disabled={likeLoading=== post.id} onClick={() => handleLike(post)} className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-blue-500 transition-colors">
-                  <GrLike className={`transition-colors duration-200 ${post.isLiked? 'text-blue-500 fill-blue-500':''}`}/> {post.like_count}
-                </button>
-                <button
-  onClick={() => {
-    if (openComments === post.id) {
-      setOpenComments(null)
-    } else {
-      setOpenComments(post.id)
-      fetchComments(post.id)
-    }
-  }}
-  className="flex  items-center gap-1.5 text-xs text-neutral-400 hover:text-teal-500 transition-colors"
->
-  <BiCommentDetail size={15} /> {post.comment_count}
-</button>
-
-{/* Comments Section */}
-{openComments === post.id && (
-  <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-col gap-3">
-    {/* Comment Input */}
-    <div className="flex gap-2">
-      <input
-        type="text"
-        value={commentText}
-        onChange={(e) => setCommentText(e.target.value)}
-        placeholder="Write a comment..."
-        className="flex-1 text-xs px-3 py-2 rounded-full border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white outline-none"
-      />
-      <button
-        onClick={() => handleComment(post.id)}
-        className="px-3 py-1.5 bg-neutral-950 text-white text-xs rounded-full hover:bg-neutral-800 transition-colors"
-      >
-        Send
-      </button>
-    </div>
-
-    {/* Comments List */}
-    {(comments[post.id] || []).map((comment) => (
-      <div key={comment.id} className="flex gap-2">
-        <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-900 flex items-center justify-center text-xs font-medium text-teal-700 dark:text-teal-300 flex-shrink-0">
-          {comment.user?.first_name?.[0]}{comment.user?.last_name?.[0]}
-        </div>
-        <div className="flex-1 bg-neutral-50 dark:bg-neutral-800 rounded-xl px-3 py-2">
-          <p className="text-xs font-medium text-neutral-900 dark:text-white">
-            {comment.user?.first_name} {comment.user?.last_name}
-          </p>
-          <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
-            {comment.content}
-          </p>
-        </div>
-      </div>
-    ))}
+  {/* Like & Comment Buttons */}
+  <div className="flex items-center gap-4 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+    <button
+      disabled={likeLoading === post.id}
+      onClick={() => handleLike(post)}
+      className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-blue-500 transition-colors"
+    >
+      <GrLike className={`transition-colors duration-200 ${post.isLiked ? 'text-blue-500' : ''}`} />
+      {post.like_count}
+    </button>
+    <button
+      onClick={() => {
+        if (openComments === post.id) {
+          setOpenComments(null)
+        } else {
+          setOpenComments(post.id)
+          fetchComments(post.id)
+        }
+      }}
+      className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-teal-500 transition-colors"
+    >
+      <BiCommentDetail size={15} />
+      {post.comment_count}
+    </button>
   </div>
-)}
-              </div>
-            </div>
+
+  {/* Comments Section — OUTSIDE the flex row! */}
+  {openComments === post.id && (
+    <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-col gap-3">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          placeholder="Write a comment..."
+          className="flex-1 text-xs px-3 py-2 rounded-full border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white outline-none"
+        />
+        <button
+          onClick={() => handleComment(post.id)}
+          className="px-3 py-1.5 bg-neutral-950 text-white text-xs rounded-full hover:bg-neutral-800 transition-colors"
+        >
+          Send
+        </button>
+      </div>
+
+      {(comments[post.id] || []).map((comment) => (
+        <div key={comment.id} className="flex gap-2">
+          <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-900 flex items-center justify-center text-xs font-medium text-teal-700 dark:text-teal-300 flex-shrink-0">
+            {comment.user?.first_name?.[0]}{comment.user?.last_name?.[0]}
+          </div>
+          <div className="flex-1 bg-neutral-50 dark:bg-neutral-800 rounded-xl px-3 py-2">
+            <p className="text-xs font-medium text-neutral-900 dark:text-white">
+              {comment.user?.first_name} {comment.user?.last_name}
+            </p>
+            <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
+              {comment.content}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+</div>
           ))
         )}
       </div>
